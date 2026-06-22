@@ -21,6 +21,13 @@ It comes in two forms:
   that **every** chunk fits one BCH input (≤10,000 bytes, ≤8,032,800 op-cost), carrying
   state forward in a hash commitment. This is the BCH-limit-viable on-chain form. See
   [`chunked/README.md`](chunked/README.md).
+- **`multi-input/`**: an alternative decomposition that splits the work across **sibling
+  inputs of one transaction** (stitched by cross-input introspection) instead of a chain
+  of sequential transactions — collapsing the verifier's ~93-step transaction chain toward
+  the transaction-size wall and running its independent pairings in parallel. Validated on
+  the real VM (vk_x as a 7-input single transaction; the four-pairing Fp12 fold). See
+  [multi-input-decomposition.md](multi-input-decomposition.md) and
+  [`multi-input/README.md`](multi-input/README.md).
 
 The verifier is built with a **local fork of `cashc`** that adds reusable functions and
 a few related capabilities. See [The CashScript Compiler Fork](cashscript-compiler-fork.md).
