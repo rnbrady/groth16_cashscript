@@ -42,24 +42,43 @@ Each Miller arm's op-list is verified to reproduce noble's `singlePairMiller`
 bit-for-bit; the product of the four equals the pairing boundary; `finalExp` of
 that boundary is `Fp12 ONE` (valid) and ≠ ONE under tampering.
 
-## Measured bytes & transaction count
+## Measured bytes & transaction count (correct P2SH32 accounting)
+
+Bytes are measured under the real **P2SH32** model: locking = `OP_HASH256 <32B>
+OP_EQUAL` (35 B, and does NOT count toward the op-cost budget); the serialized
+redeem script is the last push of the **scriptSig**, where it both ships the
+contract *and* counts toward the density-control length `(41 + scriptSig_len)`.
 
 | | this (multi-input) | verifier.cash chunked (live record) |
 |---|---|---|
-| total deployed bytes | **738,977 B** | 738,099 B |
+| total deployed bytes | **529,161 B** | 738,099 B |
 | inputs / chunks | 58 | 63 |
-| **sequential transactions** | **~8 standard (100 KB) / 1 consensus (1 MB)** | **63 sequential** |
-| total op-cost | ~414.5M | (chunked total) |
+| total scriptSig | 527,131 B | — |
+| total locking (35 B/input) | 2,030 B | — |
+| max single scriptSig | **9,981 B** (consensus cap 10,000) | — |
+| total op-cost | ~414.5M | — |
+| **sequential transactions** | **1 consensus (≤1 MB tx)** | **63 sequential** |
 
-Byte breakdown: ~222 KB locking (the actual contracts) + ~517 KB unlocking
-(padding to buy each input's op-cost budget). Padding dominates either approach —
-it is intrinsic to BCH's density-based op-cost model, not the topology.
+Byte breakdown: the scriptSig (per input: args + the redeem-script push + padding
+to buy the op-cost budget) dominates; the P2SH32 locking wrapper is only 35 B.
+Because the redeem script sits in the scriptSig and counts toward the budget, it
+does double duty — less pure zero-padding is needed than if the contract lived in
+the locking script.
 
-**The headline:** on verifier.cash's metric (bytes) this is **a dead heat with
-the published record** (738,977 vs 738,099 — within 0.1%), while collapsing the
-**63-transaction chain into ~8 standard-relay transactions, or a single ~1 MB
-consensus transaction.** Same bytes, ~8× fewer transactions (or 63×), because the
-four pairings run as parallel sibling inputs instead of one serial covenant chain.
+**The headline:** on verifier.cash's metric (bytes) this comes in at **529,161 B
+vs the 738,099 B chunked record** — *if both are measured the same P2SH32 way*
+(unconfirmed for the published figure; treat as ballpark until checked) — while
+collapsing the **63-transaction chain into a single ≤1 MB consensus transaction**,
+because the four pairings run as parallel sibling inputs instead of one serial
+covenant chain.
+
+**Relay caveat:** this is **not standard-relayable**. The standard scriptSig cap
+is **1,650 bytes** (→ only `(41+1650)×800 ≈ 1.35M` op-cost), far below the ~8M
+each chunk needs. Like the repo's chunked design and the verifier.cash record,
+every chunk relies on the **consensus** path (non-standard, submitted directly to
+a miner, scriptSig ≤10,000 B, tx ≤1 MB). Each budget-hungry chunk's scriptSig
+sits at ~9,960–9,981 B — just under the 10,000 B consensus wall, with little
+headroom.
 
 ## What is proven vs assembled
 

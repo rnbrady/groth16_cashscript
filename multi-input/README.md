@@ -136,11 +136,12 @@ export LIBAUTH_DIR=/path/to/zk-verifier-bench/node_modules
 
 The complete verifier is built out — see **[FULL_VERIFIER.md](FULL_VERIFIER.md)**:
 4 single-pair Miller arms + boundary fold + final-exp = 58 inputs, validated on
-the real VM (valid accepts, tampered rejects), **738,977 bytes** (a dead heat
-with the verifier.cash 738,099 B chunked record) collapsing **63 sequential
-transactions → ~8 standard / 1 consensus**. Generators: `gen_miller_arm.mjs`,
-`gen_finalexp_arm.mjs`; grader: `grade_full_verifier.mjs`; verdict:
-`soundness_test.mjs`.
+the real VM (valid accepts, tampered rejects), **529,161 bytes** under correct
+P2SH32 accounting (vs the verifier.cash 738,099 B chunked record), collapsing
+**63 sequential transactions → a single ≤1 MB consensus transaction**. Not
+standard-relayable (consensus path only — see FULL_VERIFIER.md). Generators:
+`gen_miller_arm.mjs`, `gen_finalexp_arm.mjs`; grader: `grade_full_verifier.mjs`;
+verdict: `soundness_test.mjs`.
 
 ## Caveats / next steps
 

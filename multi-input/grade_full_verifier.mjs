@@ -74,10 +74,17 @@ function gradeStep(file, inLimbs, outLimbs, isLast, outIdx, stitchIdx) {
   const st = realVm.evaluate(prog);
   const top = st.stack[st.stack.length - 1];
   const accepted = st.error === undefined && st.stack.length === 1 && top?.length === 1 && top[0] === 1;
-  // real deployed bytes for this chunk: locking + padded unlocking (to afford op)
-  const needLen = Math.min(10000, Math.max(0, Math.ceil(st.metrics.operationCost / 800) - 41));
-  const padded = unlockOf(inLimbs, Math.max(needLen, [...inLimbs].length * 41 + 10));
-  return { accepted, op: st.metrics.operationCost, err: st.error ?? null, lockBytes: locking.length, unlockBytes: padded.length };
+  // CORRECT P2SH32 byte accounting: locking = OP_HASH256 <32B> OP_EQUAL (35 B,
+  // NOT counted toward op-cost). The redeem script (here `locking` = OP_DROP||
+  // contract) rides in the scriptSig as its last push, where it BOTH ships the
+  // contract AND counts toward the (41 + scriptSig_len) op-cost budget. So
+  // scriptSig = args + pad + push(redeem), sized to afford the measured op-cost.
+  const redeemLen = locking.length; // the redeem script we ship in scriptSig
+  const pushLen = (n) => (n <= 75 ? 1 + n : n <= 255 ? 2 + n : 3 + n);
+  const argLen = inLimbs.length * 41; // ~40-byte LE limb + 1 push byte each
+  const needSig = Math.max(0, Math.ceil(st.metrics.operationCost / 800) - 41);
+  const scriptSig = Math.max(argLen + pushLen(redeemLen), needSig);
+  return { accepted, op: st.metrics.operationCost, err: st.error ?? null, p2sh32Lock: 35, scriptSig };
 }
 
 // NOTE: these grade contracts use stitch to outputs[outIdx] (multi-input layout).
@@ -102,7 +109,7 @@ for (let j = 0; j < 4; j++) {
     const inLimbs = armLimbs(states[c.opLo]);
     const outLimbs = armLimbs(states[c.opHi]);
     const r = gradeStep(`miller${j}_c${c.k}.cash`, inLimbs, outLimbs, false, c.outIdx, c.stitchIdx);
-    armOp += r.op; totalOp += r.op; totalLock += r.lockBytes; totalUnlock += r.unlockBytes; nChunks++;
+    armOp += r.op; totalOp += r.op; totalLock += r.p2sh32Lock; totalUnlock += r.scriptSig; nChunks++;
     allFit = allFit && r.op <= OP_BUDGET; allOk = allOk && r.accepted;
     if (!r.accepted || r.op > OP_BUDGET) console.log(`  miller${j}_c${c.k}: accepted=${r.accepted} op=${r.op.toLocaleString()} ${r.err ?? ''}`);
   }
@@ -120,7 +127,7 @@ for (const c of feMan.chunks) {
   const inLimbs = fe.liveAt(c.opLo).flatMap(fe.limbs12).map((n) => ((BigInt(n) % P) + P) % P);
   const outLimbs = c.final ? [] : fe.liveAt(c.opHi).flatMap(fe.limbs12).map((n) => ((BigInt(n) % P) + P) % P);
   const r = gradeStep(`finalexp_c${c.k}.cash`, inLimbs, outLimbs, c.final, c.outIdx, c.stitchIdx);
-  feOp += r.op; totalOp += r.op; totalLock += r.lockBytes; totalUnlock += r.unlockBytes; nChunks++;
+  feOp += r.op; totalOp += r.op; totalLock += r.p2sh32Lock; totalUnlock += r.scriptSig; nChunks++;
   allFit = allFit && r.op <= OP_BUDGET; allOk = allOk && r.accepted;
   if (!r.accepted || r.op > OP_BUDGET) console.log(`  finalexp_c${c.k}: accepted=${r.accepted} op=${r.op.toLocaleString()} final=${c.final} ${r.err ?? ''}`);
 }
@@ -134,17 +141,19 @@ console.log(`finalExp(product of 4 single-pair Millers) == Fp12 ONE: ${Fp12.eql(
 console.log(`all ${nChunks} chunks accept on real VM: ${allOk}`);
 console.log(`all ${nChunks} chunks fit per-input budget (<=${OP_BUDGET.toLocaleString()}): ${allFit}\n`);
 
-console.log('=== SIZE / TRANSACTION COUNT ===');
-const foldLock = 1927, foldUnlock = 1000; // measured in four_pairing_layout (approx unlock)
-const inputs = nChunks + 1; // + boundary fold
-const totBytes = totalLock + totalUnlock + foldLock + foldUnlock;
+console.log('=== SIZE / TRANSACTION COUNT (correct P2SH32 accounting) ===');
+// fold input (1): P2SH32 lock 35 B; scriptSig = args(48 limbs) + push(redeem ~1927) + pad to ~2.5M op
+const foldSig = Math.max(48 * 41 + (1927 <= 255 ? 2 : 3) + 1927, Math.ceil(2510194 / 800) - 41);
+const totalSig = totalUnlock + foldSig;
+const totalLk = totalLock + 35;
+const inputs = nChunks + 1;
+const totBytes = totalSig + totalLk;
 console.log(`inputs (chunks): ${inputs}  (44 Miller + 13 final-exp + 1 fold)`);
 console.log(`total op-cost: ${totalOp.toLocaleString()}`);
-console.log(`sum locking (redeem) bytes:        ${(totalLock + foldLock).toLocaleString()}`);
-console.log(`sum unlocking (padded-for-budget): ${(totalUnlock + foldUnlock).toLocaleString()}`);
-console.log(`TOTAL deployed bytes:              ${totBytes.toLocaleString()}`);
-const perTxStd = Math.floor(100000 / (totBytes / inputs));
-console.log(`\nbytes/input avg: ${Math.round(totBytes / inputs).toLocaleString()}`);
-console.log(`transactions @ 100KB standard: ~${Math.ceil(totBytes / 100000)}`);
-console.log(`transactions @ 1MB consensus:  ~${Math.ceil(totBytes / 1000000)}`);
-console.log(`\nvs verifier.cash chunked baseline: 738,099 bytes, 63 SEQUENTIAL transactions`);
+console.log(`sum scriptSig (args + redeem push + budget pad): ${totalSig.toLocaleString()} B`);
+console.log(`sum P2SH32 locking (35 B/input, NOT in op budget): ${totalLk.toLocaleString()} B`);
+console.log(`TOTAL on-chain bytes: ${totBytes.toLocaleString()} B`);
+console.log(`\nstandard scriptSig cap is 1,650 B -> NON-STANDARD (consensus path only).`);
+console.log(`consensus: scriptSig <= 10,000 B (chunks sit ~9,960-9,981 B), tx <= 1 MB.`);
+console.log(`transactions: 1 consensus tx (~${(totBytes / 1e6).toFixed(2)} MB total; fits ~1 MB if split lightly).`);
+console.log(`\nvs verifier.cash chunked record: 738,099 bytes, 63 SEQUENTIAL transactions`);

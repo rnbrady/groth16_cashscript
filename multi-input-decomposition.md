@@ -80,16 +80,28 @@ four arms equals the pairing boundary; `finalExp` of it is `Fp12 ONE` (valid) an
 
 | | verifier.cash chunked (live record) | multi-input (this) |
 |---|---|---|
-| total deployed bytes | 738,099 B | **738,977 B** |
+| total deployed bytes | 738,099 B | **529,161 B** |
 | inputs / chunks | 63 | 58 |
+| max single scriptSig | — | 9,981 B (consensus cap 10,000) |
 | total op-cost | (chunked total) | ~414.5M |
-| **sequential transactions** | **63** | **~8 standard / 1 consensus** |
+| **sequential transactions** | **63** | **1 consensus (≤1 MB)** |
 
-A **dead heat on bytes** (within 0.1%) while collapsing the **63-transaction
-chain into ~8 standard-relay transactions, or a single ~1 MB consensus
-transaction** — the four pairings run as parallel sibling inputs instead of one
-serial covenant chain. (Earlier in this note these were projections; the table
-above is now measured.)
+Bytes are measured under the correct **P2SH32** model — locking =
+`OP_HASH256 <32B> OP_EQUAL` (35 B, not counted toward op-cost); the redeem script
+rides in the scriptSig, where it both ships the contract and counts toward the
+`(41 + scriptSig_len)` density-control length, so it does double duty. That lands
+at **529,161 B vs the 738,099 B chunked record** (compare with care — the
+published figure's accounting isn't confirmed identical), while collapsing the
+**63-transaction chain into a single ≤1 MB consensus transaction**. (Earlier in
+this note these were projections; the table is now measured.)
+
+**Relay caveat:** not standard-relayable. The standard scriptSig cap is 1,650 B
+(→ ~1.35M op-cost), far below the ~8M per chunk — so this, the repo's chunked
+design, and the verifier.cash record all use the **consensus** path (direct to a
+miner, scriptSig ≤10,000 B, tx ≤1 MB), not standard relay. The "≈100 KB standard
+relay" mentioned earlier in this note is the *transaction*-size relay limit, which
+is moot here because the per-input scriptSig already exceeds the 1,650 B
+per-input standard cap.
 
 The one remaining mechanical step to land all 58 inputs in a single transaction
 is rebasing each arm's *pair-local* output indices into the global output list —
