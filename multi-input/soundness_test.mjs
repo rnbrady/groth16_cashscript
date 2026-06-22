@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { compile, unlockOf, commit, tok, realVm, P } from './_vkxmath.mjs';
-const MM = pathToFileURL('../chunked/pairing/_millermath.mjs').href;
+const here = dirname(fileURLToPath(import.meta.url));
+const MM = new URL('../chunked/pairing/_millermath.mjs', import.meta.url).href;
 const { Fp2, Fp12, bn254, vec, finalexpTrace, pairsFor, Fp, Fp6, ATE_NAF, pointDouble, pointAdd, postPrecompute } = await import(MM);
-const GEN=new URL('./generated', import.meta.url).pathname;
+const GEN = join(here, 'generated');
 const scalarFp2=(x,k)=>Fp2.fromBigTuple([Fp.mul(x.c0,k),Fp.mul(x.c1,k)]);
 function mul034fn(f,o0,o3,o4){const A=Fp6.create({c0:Fp2.mul(f.c0.c0,o0),c1:Fp2.mul(f.c0.c1,o0),c2:Fp2.mul(f.c0.c2,o0)});const B=Fp6.mul01(f.c1,o3,o4);const E=Fp6.mul01(Fp6.add(f.c0,f.c1),Fp2.add(o0,o3),o4);return Fp12.create({c0:Fp6.add(Fp6.mulByNonresidue(B),A),c1:Fp6.sub(E,Fp6.add(A,B))});}
 const lineFnRef=(f,c0,c1,c2,Px,Py)=>mul034fn(f,scalarFp2(c2,Py),scalarFp2(c1,Px),c0);

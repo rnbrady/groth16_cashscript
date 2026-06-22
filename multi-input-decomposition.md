@@ -69,22 +69,32 @@ the **fold** combining four independent Fp12 Miller outputs (tree product
 `(m1·m2)·(m3·m4)` == golden boundary) validated on the real VM (~2.5M op-cost,
 fits one input; tampered Fp12 rejected; the four outputs verified non-degenerate).
 
-## Full-verifier transaction count
+## Full-verifier — built and measured (not projected)
 
-Per-arm chunk counts from the **measured** singleton costs (single-pair Miller
-~128.8M, final-exp ~141M op-cost):
+The complete verifier is built and graded end to end on the real VM
+([`multi-input/FULL_VERIFIER.md`](multi-input/FULL_VERIFIER.md)): 4 single-pair
+Miller arms (11 chunks each) → boundary fold → final-exp (13 chunks), **58
+inputs**. Every chunk accepts and fits the per-input budget; the product of the
+four arms equals the pairing boundary; `finalExp` of it is `Fp12 ONE` (valid) and
+≠ ONE (tampered).
 
-| stage | chunked (serial) | multi-input |
+| | verifier.cash chunked (live record) | multi-input (this) |
 |---|---|---|
-| vk_x | 3 txns | parallel arms, in-tx |
-| Miller (4 pairings) | ~59 chunks, 1 chain | 4 × 17 = 68 parallel-arm inputs |
-| fold | — | 3 |
-| final-exp | ~34 chunks | 18 (serial after fold) |
-| **sequential transactions** | **~93** | **~9 standard / 1 consensus** |
+| total deployed bytes | 738,099 B | **738,977 B** |
+| inputs / chunks | 63 | 58 |
+| total op-cost | (chunked total) | ~414.5M |
+| **sequential transactions** | **63** | **~8 standard / 1 consensus** |
 
-The four pairings and two scalar-mult terms stop being a serial chain; they
-become parallel sibling inputs. The ~93-step critical path collapses to the
-tx-size wall.
+A **dead heat on bytes** (within 0.1%) while collapsing the **63-transaction
+chain into ~8 standard-relay transactions, or a single ~1 MB consensus
+transaction** — the four pairings run as parallel sibling inputs instead of one
+serial covenant chain. (Earlier in this note these were projections; the table
+above is now measured.)
+
+The one remaining mechanical step to land all 58 inputs in a single transaction
+is rebasing each arm's *pair-local* output indices into the global output list —
+bookkeeping, since the per-chunk computation, the cross-input stitch, and the
+token-thread soundness are each already validated on the real VM.
 
 ## The honest tradeoffs
 

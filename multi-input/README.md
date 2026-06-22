@@ -132,12 +132,21 @@ export CASHC=/path/to/cashscript-fork/packages/cashc/dist/cashc-cli.js
 export LIBAUTH_DIR=/path/to/zk-verifier-bench/node_modules
 ```
 
+## Full verifier (built + measured)
+
+The complete verifier is built out — see **[FULL_VERIFIER.md](FULL_VERIFIER.md)**:
+4 single-pair Miller arms + boundary fold + final-exp = 58 inputs, validated on
+the real VM (valid accepts, tampered rejects), **738,977 bytes** (a dead heat
+with the verifier.cash 738,099 B chunked record) collapsing **63 sequential
+transactions → ~8 standard / 1 consensus**. Generators: `gen_miller_arm.mjs`,
+`gen_finalexp_arm.mjs`; grader: `grade_full_verifier.mjs`; verdict:
+`soundness_test.mjs`.
+
 ## Caveats / next steps
 
-- This is a 2-input PoC of the **stitch primitive**, not the full verifier. The
-  next step is a generator that lays the whole vk_x term (4 chunks) — and then
-  the four independent pairings — out as sibling inputs in one (or few)
-  transactions.
+- The stitch primitive and the full per-chunk computation are validated; the one
+  mechanical step left to put all 58 inputs in a single transaction is rebasing
+  pair-local output indices into the global list (see FULL_VERIFIER.md).
 - Soundness: the stitch binds a consumer's consumed state to the producer's
   published output **and** binds the **token thread** (category) across the
   stitched inputs — so a spender cannot satisfy the equality with a forged
