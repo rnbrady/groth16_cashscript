@@ -75,15 +75,22 @@ function genArmChunk(lo, hi, outIdx, stitchIdx) {
   L.push(PROLOGUE);
   L.push(`    function spend(${STATE.map((n) => `int ${n}`).join(', ')}) {`);
   L.push(`        bytes inc = hash256(${ser(STATE)});`);
+  L.push('        bytes thread = tx.inputs[this.activeInputIndex].tokenCategory;');
   L.push('        require(tx.inputs[this.activeInputIndex].nftCommitment == inc);');
-  if (stitchIdx != null) L.push(`        require(tx.outputs[${stitchIdx}].nftCommitment == inc); // stitch: consume == producer's published result`);
+  if (stitchIdx != null) {
+    L.push(`        // stitch: what we consume == the producer's published result, AND the`);
+    L.push(`        // producer output is on the SAME token thread (so it can't be a forged`);
+    L.push(`        // commitment from an unrelated input the spender slotted at this index).`);
+    L.push(`        require(tx.outputs[${stitchIdx}].nftCommitment == inc);`);
+    L.push(`        require(tx.outputs[${stitchIdx}].tokenCategory == thread);`);
+  }
   L.push(`        for (int i = ${lo}; i < ${hi}; i = i + 1) {`);
   L.push('            if (((scalar >> i) % 2) == 1) { (int ax,int ay,int az)=jacAdd(rX,rY,rZ,cX,cY,cZ); rX=ax; rY=ay; rZ=az; }');
   L.push('            if (cZ != 0 && cY != 0) { (int dx,int dy,int dz)=jacDouble(cX,cY,cZ); cX=dx; cY=dy; cZ=dz; }');
   L.push('        }');
   L.push(`        int P = ${PRIME};`);
   L.push(`        require(tx.outputs[${outIdx}].nftCommitment == hash256(${serRed(STATE)}));`);
-  L.push('        require(tx.outputs[0].tokenCategory == tx.inputs[this.activeInputIndex].tokenCategory);');
+  L.push(`        require(tx.outputs[${outIdx}].tokenCategory == thread); // our published result stays on-thread`);
   L.push('    }');
   L.push('}');
   return L.join('\n') + '\n';
@@ -106,9 +113,14 @@ function genFoldChunk(t0Idx, t1Idx) {
   L.push('        return result;');
   L.push('    }');
   L.push(`    function spend(${[...T0, ...T1].map((n) => `int ${n}`).join(', ')}) {`);
-  // bind both terminal results to their producer outputs
+  // bind both terminal results to their producer outputs, on the SAME token thread
+  // as this fold input (so neither terminal can be a forged commitment from an
+  // unrelated input slotted at t0Idx/t1Idx).
+  L.push('        bytes thread = tx.inputs[this.activeInputIndex].tokenCategory;');
   L.push(`        require(tx.outputs[${t0Idx}].nftCommitment == hash256(${ser(T0)}));`);
+  L.push(`        require(tx.outputs[${t0Idx}].tokenCategory == thread);`);
   L.push(`        require(tx.outputs[${t1Idx}].nftCommitment == hash256(${ser(T1)}));`);
+  L.push(`        require(tx.outputs[${t1Idx}].tokenCategory == thread);`);
   // IC0 + term0 (jacAdd: IC0 affine z=1, plus term0 jacobian)
   L.push(`        (int x1,int y1,int z1) = jacAdd(${IC0[0]}, ${IC0[1]}, 1, a0rX, a0rY, a0rZ);`);
   L.push('        (int vx,int vy,int vz) = jacAdd(x1, y1, z1, a1rX, a1rY, a1rZ);');

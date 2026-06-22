@@ -77,8 +77,9 @@ oracle fold == EXPECTED: true
   t1_c1 bits[80,191) accepted op=7,969,817  fits   (stitched consumer)
   t1_c2 bits[191,254) accepted op=4,547,399 fits
   fold              accepted op=2,779,345  fits
-  -> TX VALID: true   max single-input op-cost 8.01M / 8.03M
-FORGED handoff (tamper t0_c1's consumed state): REJECTED (OP_VERIFY)
+  -> TX VALID: true   max single-input op-cost 8.02M / 8.03M
+FORGED handoff (tamper t0_c1's consumed state):       REJECTED (OP_VERIFY)
+CROSS-THREAD (t0_c1 spends an unrelated token category): REJECTED (OP_VERIFY)
 ```
 
 So the full vk_x — **~41M op-cost of work, 5× one input's budget** — runs in **one
@@ -137,11 +138,17 @@ export LIBAUTH_DIR=/path/to/zk-verifier-bench/node_modules
   next step is a generator that lays the whole vk_x term (4 chunks) — and then
   the four independent pairings — out as sibling inputs in one (or few)
   transactions.
-- Soundness note: the stitch binds input1's consumed state to output[0]. A
-  production version must also bind the *token thread* (category) across the
-  sibling inputs so a spender can't mix inputs from unrelated computations — the
+- Soundness: the stitch binds a consumer's consumed state to the producer's
+  published output **and** binds the **token thread** (category) across the
+  stitched inputs — so a spender cannot satisfy the equality with a forged
+  commitment carried by an input from an *unrelated* computation. This is the
   same role the CashToken category plays in Quantumroot's cross-input
-  aggregation. `arm_chunkB` checks the output[0] commitment but a full version
-  should also assert matching `tokenCategory` across the stitched inputs.
+  aggregation. The generator (`gen_vkx_multiinput.mjs`) emits, per chunk:
+  `require(tx.outputs[stitchIdx].tokenCategory == thread)` (consumer),
+  `require(tx.outputs[outIdx].tokenCategory == thread)` (producer), and the same
+  for both terminals in the fold. `assemble_and_grade.mjs` includes a
+  **cross-thread** attack (a stitched input spending an unrelated category with
+  an otherwise-correct handoff) and confirms it is **rejected** — so the category
+  binding is load-bearing, not decorative.
 - Window sizing here is hand-tuned (~82 bits/chunk ≈ 8.0M op); a real generator
   would size empirically like `../chunked/`'s `planChunk`.
