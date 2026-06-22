@@ -38,14 +38,19 @@ contract FinalExp() {
     internal function fp2Sub(int a0, int a1, int b0, int b1, int k) returns (int, int) { return subFp(a0, b0, k), subFp(a1, b1, k); }
     internal function fp2Neg(int a0, int a1, int k) returns (int, int) { return subFp(0, a0, k), subFp(0, a1, k); }
     internal function fp2Scale(int a0, int a1, int k) returns (int, int) { return mulFp(a0, k), mulFp(a1, k); }
+    // Lazy Karatsuba: v0,v1 unreduced products; only the two output coords are
+    // reduced (2 OP_MOD vs 3 before). Bias 4p^2/8p^2 is safe for inputs up to 2p
+    // (fp2Add results, the largest magnitude any caller passes).
     internal function fp2Mul(int a0, int a1, int b0, int b1) returns (int, int) {
-        int v0 = mulFp(a0, b0);
-        int v1 = mulFp(a1, b1);
-        return subFp(v0, v1, 1),
-               subFp(mulFp(addFp(a0, a1), addFp(b0, b1)), addFp(v0, v1), 2);
+        int v0 = a0 * b0;
+        int v1 = a1 * b1;
+        return (v0 - v1 + 4 * 21888242871839275222246405745257275088696311157297823662689037894645226208583 * 21888242871839275222246405745257275088696311157297823662689037894645226208583) % 21888242871839275222246405745257275088696311157297823662689037894645226208583,
+               ((a0 + a1) * (b0 + b1) - v0 - v1 + 8 * 21888242871839275222246405745257275088696311157297823662689037894645226208583 * 21888242871839275222246405745257275088696311157297823662689037894645226208583) % 21888242871839275222246405745257275088696311157297823662689037894645226208583;
     }
+    // Lazy: c0 = (a0+a1)(a0-a1)+8p^2, c1 = 2*a0*a1, each reduced once (2 OP_MOD vs 3).
     internal function fp2Sqr(int a0, int a1) returns (int, int) {
-        return mulFp(addFp(a0, a1), subFp(a0, a1, 64)), mulFp(2, mulFp(a0, a1));
+        return ((a0 + a1) * (a0 - a1) + 8 * 21888242871839275222246405745257275088696311157297823662689037894645226208583 * 21888242871839275222246405745257275088696311157297823662689037894645226208583) % 21888242871839275222246405745257275088696311157297823662689037894645226208583,
+               (2 * a0 * a1) % 21888242871839275222246405745257275088696311157297823662689037894645226208583;
     }
     internal function fp2MulXi(int a0, int a1, int k) returns (int, int) { return subFp(mulFp(9, a0), a1, k), addFp(mulFp(9, a1), a0); }
     internal function fp2Conj(int a0, int a1, int k) returns (int, int) { return a0, subFp(0, a1, k); }
