@@ -1,0 +1,41 @@
+pragma cashscript ^0.13.0;
+contract ArmChunkA() {
+    internal function addFp(int x, int y) returns (int) { return (x + y) % 21888242871839275222246405745257275088696311157297823662689037894645226208583; }
+    internal function subFp(int x, int y) returns (int) { return (x - y + 21888242871839275222246405745257275088696311157297823662689037894645226208583) % 21888242871839275222246405745257275088696311157297823662689037894645226208583; }
+    internal function mulFp(int x, int y) returns (int) { return (x * y) % 21888242871839275222246405745257275088696311157297823662689037894645226208583; }
+    internal function sqrFp(int x) returns (int) { return (x * x) % 21888242871839275222246405745257275088696311157297823662689037894645226208583; }
+    internal function jacDouble(int x, int y, int z) returns (int, int, int) {
+        int a=sqrFp(x); int b=sqrFp(y); int c=sqrFp(b);
+        int d=mulFp(2,subFp(subFp(sqrFp(addFp(x,b)),a),c)); int e=mulFp(3,a); int f=sqrFp(e);
+        int nx=subFp(f,mulFp(2,d)); int ny=subFp(mulFp(e,subFp(d,nx)),mulFp(8,c)); int nz=mulFp(2,mulFp(y,z));
+        return nx,ny,nz;
+    }
+    internal function jacAdd(int aX,int aY,int aZ,int bX,int bY,int bZ) returns (int,int,int) {
+        int rx=bX; int ry=bY; int rz=bZ;
+        if (aZ != 0) {
+            int z1z1=sqrFp(aZ); int z2z2=sqrFp(bZ); int u1=mulFp(aX,z2z2); int u2=mulFp(bX,z1z1);
+            int s1=mulFp(mulFp(aY,bZ),z2z2); int s2=mulFp(mulFp(bY,aZ),z1z1);
+            if (u1==u2 && s1==s2) {
+                int da=sqrFp(aX); int db=sqrFp(aY); int dc=sqrFp(db);
+                int dd=mulFp(2,subFp(subFp(sqrFp(addFp(aX,db)),da),dc)); int de=mulFp(3,da); int df=sqrFp(de);
+                int dnx=subFp(df,mulFp(2,dd)); int dny=subFp(mulFp(de,subFp(dd,dnx)),mulFp(8,dc)); int dnz=mulFp(2,mulFp(aY,aZ));
+                rx=dnx; ry=dny; rz=dnz;
+            } else {
+                int h=subFp(u2,u1); int i2=sqrFp(mulFp(2,h)); int jj=mulFp(h,i2); int rr=mulFp(2,subFp(s2,s1)); int vv=mulFp(u1,i2);
+                int anx=subFp(subFp(sqrFp(rr),jj),mulFp(2,vv)); int any=subFp(mulFp(rr,subFp(vv,anx)),mulFp(2,mulFp(s1,jj)));
+                int anz=mulFp(subFp(subFp(sqrFp(addFp(aZ,bZ)),z1z1),z2z2),h);
+                rx=anx; ry=any; rz=anz;
+            }
+        }
+        return rx,ry,rz;
+    }
+    function spend(int rX,int rY,int rZ,int cX,int cY,int cZ,int scalar) {
+        require(tx.inputs[this.activeInputIndex].nftCommitment == hash256(toPaddedBytes(rX,40)+toPaddedBytes(rY,40)+toPaddedBytes(rZ,40)+toPaddedBytes(cX,40)+toPaddedBytes(cY,40)+toPaddedBytes(cZ,40)+toPaddedBytes(scalar,40)));
+        for (int i = 0; i < 82; i = i + 1) {
+            if (((scalar >> i) % 2) == 1) { (int ax,int ay,int az)=jacAdd(rX,rY,rZ,cX,cY,cZ); rX=ax; rY=ay; rZ=az; }
+            if (cZ != 0 && cY != 0) { (int dx,int dy,int dz)=jacDouble(cX,cY,cZ); cX=dx; cY=dy; cZ=dz; }
+        }
+        int P = 21888242871839275222246405745257275088696311157297823662689037894645226208583;
+        require(tx.outputs[0].nftCommitment == hash256(toPaddedBytes(rX%P,40)+toPaddedBytes(rY%P,40)+toPaddedBytes(rZ%P,40)+toPaddedBytes(cX%P,40)+toPaddedBytes(cY%P,40)+toPaddedBytes(cZ%P,40)+toPaddedBytes(scalar,40)));
+    }
+}
