@@ -82,9 +82,9 @@ four arms equals the pairing boundary; `finalExp` of it is `Fp12 ONE` (valid) an
 |---|---|---|
 | total deployed bytes | 738,099 B | **529,161 B** |
 | inputs / chunks | 63 | 58 |
-| max single scriptSig | — | 9,981 B (consensus cap 10,000) |
+| max single scriptSig | — | 9,981 B (limit 10,000) |
 | total op-cost | (chunked total) | ~414.5M |
-| **sequential transactions** | **63** | **1 consensus (≤1 MB)** |
+| **transactions** | **63 sequential** | **~6 standard / 1 consensus** |
 
 Bytes are measured under the correct **P2SH32** model — locking =
 `OP_HASH256 <32B> OP_EQUAL` (35 B, not counted toward op-cost); the redeem script
@@ -92,16 +92,19 @@ rides in the scriptSig, where it both ships the contract and counts toward the
 `(41 + scriptSig_len)` density-control length, so it does double duty. That lands
 at **529,161 B vs the 738,099 B chunked record** (compare with care — the
 published figure's accounting isn't confirmed identical), while collapsing the
-**63-transaction chain into a single ≤1 MB consensus transaction**. (Earlier in
-this note these were projections; the table is now measured.)
+**63-transaction chain into ~6 standard-relay transactions, or a single ≤1 MB
+consensus transaction**. (Earlier in this note these were projections; the table
+is now measured.)
 
-**Relay caveat:** not standard-relayable. The standard scriptSig cap is 1,650 B
-(→ ~1.35M op-cost), far below the ~8M per chunk — so this, the repo's chunked
-design, and the verifier.cash record all use the **consensus** path (direct to a
-miner, scriptSig ≤10,000 B, tx ≤1 MB), not standard relay. The "≈100 KB standard
-relay" mentioned earlier in this note is the *transaction*-size relay limit, which
-is moot here because the per-input scriptSig already exceeds the 1,650 B
-per-input standard cap.
+**Relay note (post-May-2026 network this targets):** each chunk's scriptSig is
+~9,960–9,981 B, under the **10,000-byte standard unlocking limit**. That limit was
+1,650 B historically, but **CHIP-2024-12 (Pay to Script) raised standard unlocking
+bytecode to 10,000 B (= consensus), active May 2026** — its rationale explicitly
+cites ZK/PQ proofs larger than 1,650 B. So per input these chunks are
+**standard-relayable** on the 2026 VM. The binding relay limit is then the
+**100 KB standard transaction size** (→ ~6 standard txns); the ~529 KB whole also
+fits one ≤1 MB consensus tx. (Pre-May-2026, the 1,650-byte cap would force the
+consensus path.)
 
 The one remaining mechanical step to land all 58 inputs in a single transaction
 is rebasing each arm's *pair-local* output indices into the global output list —

@@ -36,10 +36,11 @@ Per-arm chunking from the **measured** single-pair Miller cost
 | fold | — (batched f IS boundary) | 3 (Fp12 tree product) |
 | final-exp | ~34 | 18 (serial, after fold) |
 | total inputs/chunks | ~93 | 89 |
-| **sequential transactions** | **~93** | **1 consensus (≤1 MB tx)** |
+| **transactions** | **~93 sequential** | **~9 standard / 1 consensus** |
 
-(Consensus path only — each chunk's scriptSig exceeds the 1,650 B standard relay
-cap, so this is non-standard, like the chunked baseline. See FULL_VERIFIER.md.)
+(Per-input scriptSig fits the 10,000-byte standard unlocking limit raised by
+CHIP-2024-12 Pay to Script, active May 2026 — so standard-relayable on the 2026
+network; bounded by the 100 KB standard tx size. See FULL_VERIFIER.md.)
 
 The four arms stop being a serial chain — they become parallel inputs — so the
 ~93-step critical path collapses to the tx-size wall, not the dependency depth.
@@ -65,8 +66,8 @@ The four arms stop being a serial chain — they become parallel inputs — so t
 ## Net
 
 For the full verifier, sibling-input decomposition turns the chunked design's
-**~93 sequential transactions** into **a single ≤1 MB consensus transaction**
-(non-standard — consensus path only), by running the four independent pairings —
+**~93 sequential transactions** into **~9 standard-relay transactions (or a single
+≤1 MB consensus transaction)**, by running the four independent pairings —
 and the two vk_x scalar-mult terms — as parallel sibling inputs instead of one
 serial covenant chain. Total op-cost rises modestly (lost shared-`fp12Sqr`
 batching) and total bytes are similar; the win is **transaction count and

@@ -138,8 +138,10 @@ The complete verifier is built out — see **[FULL_VERIFIER.md](FULL_VERIFIER.md
 4 single-pair Miller arms + boundary fold + final-exp = 58 inputs, validated on
 the real VM (valid accepts, tampered rejects), **529,161 bytes** under correct
 P2SH32 accounting (vs the verifier.cash 738,099 B chunked record), collapsing
-**63 sequential transactions → a single ≤1 MB consensus transaction**. Not
-standard-relayable (consensus path only — see FULL_VERIFIER.md). Generators:
+**63 sequential transactions → ~6 standard-relay (100 KB) or 1 consensus (1 MB)
+transaction**. Each chunk's scriptSig (~9,981 B) fits the 10,000-byte standard
+unlocking limit raised by CHIP-2024-12 Pay to Script (active May 2026), so it is
+standard-relayable on the targeted network — see FULL_VERIFIER.md. Generators:
 `gen_miller_arm.mjs`, `gen_finalexp_arm.mjs`; grader: `grade_full_verifier.mjs`;
 verdict: `soundness_test.mjs`.
 
