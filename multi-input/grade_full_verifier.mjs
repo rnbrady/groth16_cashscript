@@ -79,12 +79,18 @@ function gradeStep(file, inLimbs, outLimbs, isLast, outIdx, stitchIdx) {
   // contract) rides in the scriptSig as its last push, where it BOTH ships the
   // contract AND counts toward the (41 + scriptSig_len) op-cost budget. So
   // scriptSig = args + pad + push(redeem), sized to afford the measured op-cost.
-  const redeemLen = locking.length; // the redeem script we ship in scriptSig
+  const redeemLen = locking.length; // OP_DROP || contract
   const pushLen = (n) => (n <= 75 ? 1 + n : n <= 255 ? 2 + n : 3 + n);
   const argLen = inLimbs.length * 41; // ~40-byte LE limb + 1 push byte each
   const needSig = Math.max(0, Math.ceil(st.metrics.operationCost / 800) - 41);
+  // (a) verifier.cash model: lockingBytecode = OP_DROP||redeem; unlocking = args + pad.
+  //     totalBytes = locking + unlocking, with the pad sized to buy the op budget.
+  const vcLock = redeemLen;
+  const vcUnlock = Math.max(argLen, needSig); // args + zero-pad to afford op-cost
+  // (b) P2SH32 model: 35 B locking; redeem rides in scriptSig (double duty -> less pad).
+  const p2sh32Lock = 35;
   const scriptSig = Math.max(argLen + pushLen(redeemLen), needSig);
-  return { accepted, op: st.metrics.operationCost, err: st.error ?? null, p2sh32Lock: 35, scriptSig };
+  return { accepted, op: st.metrics.operationCost, err: st.error ?? null, vcLock, vcUnlock, p2sh32Lock, scriptSig };
 }
 
 // NOTE: these grade contracts use stitch to outputs[outIdx] (multi-input layout).
@@ -99,6 +105,7 @@ function gradeStep(file, inLimbs, outLimbs, isLast, outIdx, stitchIdx) {
 console.log('=== FULL MULTI-INPUT GROTH16 VERIFIER — per-chunk grading (real VM) ===\n');
 const pairs = pairsFor(vec.publicInputs);
 let totalLock = 0, totalUnlock = 0, totalOp = 0, nChunks = 0, allFit = true, allOk = true;
+let vcLockTot = 0, vcUnlockTot = 0;
 
 // --- 4 Miller arms ---
 for (let j = 0; j < 4; j++) {
@@ -109,7 +116,7 @@ for (let j = 0; j < 4; j++) {
     const inLimbs = armLimbs(states[c.opLo]);
     const outLimbs = armLimbs(states[c.opHi]);
     const r = gradeStep(`miller${j}_c${c.k}.cash`, inLimbs, outLimbs, false, c.outIdx, c.stitchIdx);
-    armOp += r.op; totalOp += r.op; totalLock += r.p2sh32Lock; totalUnlock += r.scriptSig; nChunks++;
+    armOp += r.op; totalOp += r.op; totalLock += r.p2sh32Lock; totalUnlock += r.scriptSig; nChunks++; vcLockTot += r.vcLock; vcUnlockTot += r.vcUnlock;
     allFit = allFit && r.op <= OP_BUDGET; allOk = allOk && r.accepted;
     if (!r.accepted || r.op > OP_BUDGET) console.log(`  miller${j}_c${c.k}: accepted=${r.accepted} op=${r.op.toLocaleString()} ${r.err ?? ''}`);
   }
@@ -127,7 +134,7 @@ for (const c of feMan.chunks) {
   const inLimbs = fe.liveAt(c.opLo).flatMap(fe.limbs12).map((n) => ((BigInt(n) % P) + P) % P);
   const outLimbs = c.final ? [] : fe.liveAt(c.opHi).flatMap(fe.limbs12).map((n) => ((BigInt(n) % P) + P) % P);
   const r = gradeStep(`finalexp_c${c.k}.cash`, inLimbs, outLimbs, c.final, c.outIdx, c.stitchIdx);
-  feOp += r.op; totalOp += r.op; totalLock += r.p2sh32Lock; totalUnlock += r.scriptSig; nChunks++;
+  feOp += r.op; totalOp += r.op; totalLock += r.p2sh32Lock; totalUnlock += r.scriptSig; nChunks++; vcLockTot += r.vcLock; vcUnlockTot += r.vcUnlock;
   allFit = allFit && r.op <= OP_BUDGET; allOk = allOk && r.accepted;
   if (!r.accepted || r.op > OP_BUDGET) console.log(`  finalexp_c${c.k}: accepted=${r.accepted} op=${r.op.toLocaleString()} final=${c.final} ${r.err ?? ''}`);
 }
@@ -141,20 +148,24 @@ console.log(`finalExp(product of 4 single-pair Millers) == Fp12 ONE: ${Fp12.eql(
 console.log(`all ${nChunks} chunks accept on real VM: ${allOk}`);
 console.log(`all ${nChunks} chunks fit per-input budget (<=${OP_BUDGET.toLocaleString()}): ${allFit}\n`);
 
-console.log('=== SIZE / TRANSACTION COUNT (correct P2SH32 accounting) ===');
-// fold input (1): P2SH32 lock 35 B; scriptSig = args(48 limbs) + push(redeem ~1927) + pad to ~2.5M op
-const foldSig = Math.max(48 * 41 + (1927 <= 255 ? 2 : 3) + 1927, Math.ceil(2510194 / 800) - 41);
-const totalSig = totalUnlock + foldSig;
-const totalLk = totalLock + 35;
+console.log('=== SIZE / TRANSACTION COUNT (two accountings) ===');
 const inputs = nChunks + 1;
-const totBytes = totalSig + totalLk;
-console.log(`inputs (chunks): ${inputs}  (44 Miller + 13 final-exp + 1 fold)`);
-console.log(`total op-cost: ${totalOp.toLocaleString()}`);
-console.log(`sum scriptSig (args + redeem push + budget pad): ${totalSig.toLocaleString()} B`);
-console.log(`sum P2SH32 locking (35 B/input, NOT in op budget): ${totalLk.toLocaleString()} B`);
-console.log(`TOTAL on-chain bytes: ${totBytes.toLocaleString()} B`);
-console.log(`\nper-input scriptSig sits ~9,960-9,981 B, under the 10,000-byte standard`);
+// fold input bytes under each model
+const foldRedeem = 1927, foldArgs = 48 * 41, foldNeed = Math.ceil(2510194 / 800) - 41;
+const foldVcLock = foldRedeem, foldVcUnlock = Math.max(foldArgs, foldNeed);
+const foldSig = Math.max(foldArgs + 3 + foldRedeem, foldNeed);
+// (a) verifier.cash model: Sum(locking[OP_DROP||redeem] + unlocking[args+pad])
+const vcTotal = (vcLockTot + foldVcLock) + (vcUnlockTot + foldVcUnlock);
+// (b) P2SH32 model: 35 B locking + scriptSig(args + redeem push + pad)
+const p2Total = (totalLock + 35) + (totalUnlock + foldSig);
+console.log(`inputs: ${inputs}  (44 Miller + 13 final-exp + 1 fold)   total op-cost: ${totalOp.toLocaleString()}`);
+console.log(`\n(a) verifier.cash model  [redeem in OP_DROP-locking; Sum(lock+unlock)]:`);
+console.log(`      ${vcTotal.toLocaleString()} B   <-- APPLES-TO-APPLES vs the 738,099 B record`);
+console.log(`(b) P2SH32 model         [35 B locking; redeem in scriptSig, double duty]:`);
+console.log(`      ${p2Total.toLocaleString()} B   (different accounting; ~28% less; NOT comparable to the record)`);
+console.log(`\nper-input scriptSig (P2SH32) sits ~9,960-9,981 B, under the 10,000-byte standard`);
 console.log(`unlocking limit (raised from 1,650 by CHIP-2024-12 Pay to Script, active`);
 console.log(`May 2026) -> standard-relayable per input on the 2026 network.`);
+const totBytes = vcTotal; // use the comparable figure for the tx-count line
 console.log(`transactions: ~${Math.ceil(totBytes / 100000)} standard (100 KB tx) / 1 consensus (1 MB tx, ${(totBytes / 1e6).toFixed(2)} MB total).`);
 console.log(`\nvs verifier.cash chunked record: 738,099 bytes, 63 SEQUENTIAL transactions`);

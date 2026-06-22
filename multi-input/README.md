@@ -136,12 +136,16 @@ export LIBAUTH_DIR=/path/to/zk-verifier-bench/node_modules
 
 The complete verifier is built out — see **[FULL_VERIFIER.md](FULL_VERIFIER.md)**:
 4 single-pair Miller arms + boundary fold + final-exp = 58 inputs, validated on
-the real VM (valid accepts, tampered rejects), **529,161 bytes** under correct
-P2SH32 accounting (vs the verifier.cash 738,099 B chunked record), collapsing
-**63 sequential transactions → ~6 standard-relay (100 KB) or 1 consensus (1 MB)
-transaction**. Each chunk's scriptSig (~9,981 B) fits the 10,000-byte standard
-unlocking limit raised by CHIP-2024-12 Pay to Script (active May 2026), so it is
-standard-relayable on the targeted network — see FULL_VERIFIER.md. Generators:
+the real VM (valid accepts, tampered rejects). On **verifier.cash's own byte
+metric** (redeem in an OP_DROP-locking script, sum locking+unlocking — confirmed
+from its harness) it measures **741,074 B vs the 738,099 B chunked record — a dead
+heat** — while collapsing **63 sequential transactions → ~8 standard-relay (100 KB)
+or 1 consensus (1 MB)**. Under a true **P2SH32** accounting (redeem in the
+scriptSig, doing double duty) it is **529,165 B**, a real ~28% saving but a
+*different* measurement, not comparable to the record (which would also shrink
+under P2SH32). Each chunk's scriptSig (~9,981 B) fits the 10,000-byte standard
+unlocking limit (raised from 1,650 by CHIP-2024-12 Pay to Script, active May
+2026), so it is standard-relayable per input — see FULL_VERIFIER.md. Generators:
 `gen_miller_arm.mjs`, `gen_finalexp_arm.mjs`; grader: `grade_full_verifier.mjs`;
 verdict: `soundness_test.mjs`.
 

@@ -78,23 +78,26 @@ inputs**. Every chunk accepts and fits the per-input budget; the product of the
 four arms equals the pairing boundary; `finalExp` of it is `Fp12 ONE` (valid) and
 ≠ ONE (tampered).
 
-| | verifier.cash chunked (live record) | multi-input (this) |
+| | verifier.cash chunked (record) | multi-input (this) |
 |---|---|---|
-| total deployed bytes | 738,099 B | **529,161 B** |
+| **bytes — verifier.cash model** (redeem in locking) | 738,099 B | **741,074 B** |
+| **bytes — P2SH32 model** (redeem in scriptSig) | not measured | **529,165 B** |
 | inputs / chunks | 63 | 58 |
-| max single scriptSig | — | 9,981 B (limit 10,000) |
 | total op-cost | (chunked total) | ~414.5M |
-| **transactions** | **63 sequential** | **~6 standard / 1 consensus** |
+| **transactions** | **63 sequential** | **~8 standard / 1 consensus** |
 
-Bytes are measured under the correct **P2SH32** model — locking =
-`OP_HASH256 <32B> OP_EQUAL` (35 B, not counted toward op-cost); the redeem script
-rides in the scriptSig, where it both ships the contract and counts toward the
-`(41 + scriptSig_len)` density-control length, so it does double duty. That lands
-at **529,161 B vs the 738,099 B chunked record** (compare with care — the
-published figure's accounting isn't confirmed identical), while collapsing the
-**63-transaction chain into ~6 standard-relay transactions, or a single ≤1 MB
-consensus transaction**. (Earlier in this note these were projections; the table
-is now measured.)
+**Apples-to-apples on verifier.cash's own metric** (`Σ locking+unlocking`, redeem
+in an `OP_DROP`-prefixed locking script — confirmed by reading its harness):
+**741,074 B vs 738,099 B — a dead heat**, while collapsing the **63-transaction
+chain into ~6 standard-relay transactions (or 1 consensus tx)**. (Earlier in this
+note these were projections; now measured.)
+
+The **529 KB** figure is a *different* accounting — a true P2SH32 spend, where the
+redeem rides in the scriptSig and does double duty (ships the contract *and* buys
+op-cost budget), so fewer bytes are pure padding. It is genuinely ~28% smaller,
+but **not comparable to the 738,099 record** (which uses OP_DROP-locking);
+applying P2SH32 accounting to the baseline would shrink it too. Treat 529 KB as
+"what a P2SH32 layout costs," not "beats the record."
 
 **Relay note (post-May-2026 network this targets):** each chunk's scriptSig is
 ~9,960–9,981 B, under the **10,000-byte standard unlocking limit**. That limit was

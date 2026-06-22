@@ -42,35 +42,40 @@ Each Miller arm's op-list is verified to reproduce noble's `singlePairMiller`
 bit-for-bit; the product of the four equals the pairing boundary; `finalExp` of
 that boundary is `Fp12 ONE` (valid) and ≠ ONE under tampering.
 
-## Measured bytes & transaction count (correct P2SH32 accounting)
+## Measured bytes & transaction count
 
-Bytes are measured under the real **P2SH32** model: locking = `OP_HASH256 <32B>
-OP_EQUAL` (35 B, and does NOT count toward the op-cost budget); the serialized
-redeem script is the last push of the **scriptSig**, where it both ships the
-contract *and* counts toward the density-control length `(41 + scriptSig_len)`.
+**Two byte accountings, stated separately so the comparison is honest.** The
+verifier.cash leaderboard (and the `zk-verifier-bench` harness) measures
+`totalBytes = Σ (lockingBytecode.length + unlockingBytecode.length)`, where each
+step's **`lockingBytecode = OP_DROP || redeem`** (the contract lives in the
+locking script) and `unlockingBytecode = args + zero-pad`. Confirmed by reading
+`zk-verifier-bench/src/harness/benchmark.ts` and a committed chunked vector
+(locking starts `0x75` = OP_DROP, ~1,456 B; unlocking ~8,677 B).
 
-| | this (multi-input) | verifier.cash chunked (live record) |
+| | this (multi-input) | verifier.cash chunked (record) |
 |---|---|---|
-| total deployed bytes | **529,161 B** | 738,099 B |
+| **bytes — verifier.cash model** (redeem in locking, sum both) | **741,074 B** | 738,099 B |
+| **bytes — P2SH32 model** (35 B locking, redeem in scriptSig) | **529,165 B** | not measured this way |
 | inputs / chunks | 58 | 63 |
-| total scriptSig | 527,131 B | — |
-| total locking (35 B/input) | 2,030 B | — |
-| max single scriptSig | **9,981 B** (limit 10,000) | — |
+| max single scriptSig (P2SH32) | 9,981 B (limit 10,000) | — |
 | total op-cost | ~414.5M | — |
-| **transactions** | **~6 standard (100 KB) / 1 consensus (1 MB)** | **63 sequential** |
+| **transactions** | **~8 standard (100 KB) / 1 consensus** | **63 sequential** |
 
-Byte breakdown: the scriptSig (per input: args + the redeem-script push + padding
-to buy the op-cost budget) dominates; the P2SH32 locking wrapper is only 35 B.
-Because the redeem script sits in the scriptSig and counts toward the budget, it
-does double duty — less pure zero-padding is needed than if the contract lived in
-the locking script.
+**Apples-to-apples (verifier.cash's own metric): 741,074 B vs 738,099 B — a dead
+heat** (within 0.1%), while collapsing the **63-transaction chain into ~6
+standard-relay transactions, or a single ≤1 MB consensus transaction**, because
+the four pairings run as parallel sibling inputs instead of one serial covenant
+chain. That is the fair head-to-head: same accounting, essentially the same bytes,
+~10× fewer transactions.
 
-**The headline:** on verifier.cash's metric (bytes) this comes in at **529,161 B
-vs the 738,099 B chunked record** — *if both are measured the same P2SH32 way*
-(unconfirmed for the published figure; treat as ballpark until checked) — while
-collapsing the **63-transaction chain into ~6 standard-relay transactions, or a
-single ≤1 MB consensus transaction**, because the four pairings run as parallel
-sibling inputs instead of one serial covenant chain.
+**The P2SH32 number (529 KB) is a different, more physically accurate accounting**
+for a real P2SH32 deployment: the redeem script rides in the scriptSig where it
+does *double duty* — ships the contract *and* counts toward the `(41+scriptSig)`
+op-cost budget — so fewer bytes are pure zero-padding. This is a genuine ~28%
+saving, **but it is not a fair comparison against the 738,099 record** (which uses
+OP_DROP-locking); applying the same P2SH32 accounting to the chunked baseline would
+shrink it too. So treat 529 KB as "what a P2SH32 layout costs," not as "beats the
+record." We have not re-measured the baseline under P2SH32.
 
 **Relay note (post-May-2026 network — what this targets):** each chunk's scriptSig
 is ~9,960–9,981 B, **just under the 10,000-byte standard unlocking limit**. That
